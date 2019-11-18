@@ -1,0 +1,12 @@
+[Unit]
+Description=smartdns service
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+ExecStart=/usr/local/bin/smartdns
+
+[Install]
+WantedBy=multi-user.target
