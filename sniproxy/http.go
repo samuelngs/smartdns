@@ -17,17 +17,13 @@
 package sniproxy
 
 import (
-	"bufio"
-	"bytes"
 	"fmt"
-	"io"
 	"net"
 	"time"
 
 	"github.com/samuelngs/smartdns/log"
+	"github.com/samuelngs/smartdns/net/http"
 )
-
-var hostHeaderPrefix = []byte("Host:")
 
 func (p *SNIProxy) listenHTTP(port int) {
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
@@ -67,27 +63,9 @@ func (p *SNIProxy) handleHTTPConnection(c *net.TCPConn) {
 
 	c.SetDeadline(time.Now().Add(p.connTimeout))
 
-	var buf bytes.Buffer
-	sc := bufio.NewScanner(io.TeeReader(c, &buf))
-	sc.Scan()
-
-	var hostname string
-	for sc.Scan() {
-		ln := sc.Bytes()
-		if len(ln) == 0 {
-			break
-		}
-		if bytes.HasPrefix(ln, hostHeaderPrefix) {
-			hostname = string(bytes.TrimSpace(bytes.TrimPrefix(ln, hostHeaderPrefix)))
-			break
-		}
-	}
-	if err := sc.Err(); err != nil {
-		logger.Warn("could not read request body", log.String("remote-addr", c.RemoteAddr().String()))
-		return
-	}
-	if len(hostname) == 0 {
-		logger.Warn("could not read host header", log.String("remote-addr", c.RemoteAddr().String()))
+	hostname, prefix, err := http.ParseHost(c)
+	if err != nil {
+		logger.Warn(err.Error(), log.String("remote-addr", c.RemoteAddr().String()))
 		return
 	}
 
@@ -105,7 +83,7 @@ func (p *SNIProxy) handleHTTPConnection(c *net.TCPConn) {
 		return
 	}
 
-	if err := p.proxy(c, dst.(*net.TCPConn), &buf); err != nil {
+	if err := p.proxy(c, dst.(*net.TCPConn), prefix); err != nil {
 		logger.Warn(
 			"could not proxy http connection",
 			log.String("error", err.Error()),
