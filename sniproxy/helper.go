@@ -48,7 +48,7 @@ func (p *SNIProxy) newReader(c *net.TCPConn, prefix ...io.Reader) reader {
 	}
 	return reader{
 		Reader:       rd,
-		ResetTimeout: func() { c.SetReadDeadline(time.Now().Add(p.dataTimeout)) },
+		ResetTimeout: func() { c.SetReadDeadline(time.Now().Add(p.conf.Proxy.DataTimeout)) },
 		Close:        c.CloseRead,
 		RemoteAddr:   c.RemoteAddr,
 	}
@@ -57,7 +57,7 @@ func (p *SNIProxy) newReader(c *net.TCPConn, prefix ...io.Reader) reader {
 func (p *SNIProxy) newWriter(c *net.TCPConn) writer {
 	return writer{
 		Writer:       c,
-		ResetTimeout: func() { c.SetWriteDeadline(time.Now().Add(p.dataTimeout)) },
+		ResetTimeout: func() { c.SetWriteDeadline(time.Now().Add(p.conf.Proxy.DataTimeout)) },
 		Close:        c.CloseWrite,
 		RemoteAddr:   c.RemoteAddr,
 	}

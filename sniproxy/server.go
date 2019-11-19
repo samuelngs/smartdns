@@ -16,17 +16,23 @@
 
 package sniproxy
 
-import "time"
+import (
+	"github.com/samuelngs/smartdns/config"
+)
 
 // SNIProxy constructs a sni-proxy server
 type SNIProxy struct {
-	connTimeout time.Duration
-	dialTimeout time.Duration
-	dataTimeout time.Duration
+	conf *config.Config
 }
 
 // Start initializes and starts sni-proxy server
 func (p *SNIProxy) Start() error {
+	if p.conf.Proxy.HTTP.Enabled {
+		go p.listenHTTP(p.conf.Proxy.HTTP.Port)
+	}
+	if p.conf.Proxy.HTTPS.Enabled {
+		go p.listenHTTPS(p.conf.Proxy.HTTPS.Port)
+	}
 	return nil
 }
 

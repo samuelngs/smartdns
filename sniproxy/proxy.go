@@ -17,8 +17,6 @@
 package sniproxy
 
 import (
-	"time"
-
 	"github.com/samuelngs/smartdns/config"
 	"github.com/samuelngs/smartdns/log"
 )
@@ -27,11 +25,6 @@ var logger = log.DefaultLogger
 
 // Listen func
 func Listen(conf *config.Config) {
-	e := &SNIProxy{
-		connTimeout: time.Second * 20,
-		dialTimeout: time.Second * 10,
-		dataTimeout: time.Second * 240,
-	}
-	go e.listenHTTP(80)
-	go e.listenHTTPS(443)
+	e := &SNIProxy{conf}
+	e.Start()
 }

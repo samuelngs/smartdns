@@ -17,24 +17,32 @@
 package config
 
 import (
+	"time"
+
 	"github.com/samuelngs/smartdns/net/ip"
 )
 
 // Proxy configuration
 type Proxy struct {
-	Host  string      `yaml:"host"`
-	HTTP  *HTTPProxy  `yaml:"http"`
-	HTTPS *HTTPSProxy `yaml:"https"`
-	DNS   []*DNS      `yaml:"resolve_dns"`
+	Host        string        `yaml:"host"`
+	ConnTimeout time.Duration `yaml:"conn_timeout"`
+	DialTimeout time.Duration `yaml:"dial_timeout"`
+	DataTimeout time.Duration `yaml:"data_timeout"`
+	HTTP        *HTTPProxy    `yaml:"http"`
+	HTTPS       *HTTPSProxy   `yaml:"https"`
+	DNS         []*DNS        `yaml:"resolve_dns"`
 }
 
 // DefaultProxy configuration
 func DefaultProxy() *Proxy {
 	p := &Proxy{
-		Host:  "127.0.0.1",
-		HTTP:  DefaultHTTPProxy(),
-		HTTPS: DefaultHTTPSProxy(),
-		DNS:   make([]*DNS, 0),
+		Host:        "127.0.0.1",
+		ConnTimeout: time.Second * 20,
+		DialTimeout: time.Second * 10,
+		DataTimeout: time.Second * 240,
+		HTTP:        DefaultHTTPProxy(),
+		HTTPS:       DefaultHTTPSProxy(),
+		DNS:         make([]*DNS, 0),
 	}
 	if host, ok := ip.FromEnv(); ok {
 		p.Host = host.String()

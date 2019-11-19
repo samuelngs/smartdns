@@ -56,12 +56,20 @@ func (p *SNIProxy) handleHTTPConnection(c *net.TCPConn) {
 		log.String("remote-addr", c.RemoteAddr().String()),
 		log.String("protocol", "http"))
 
+	if !p.conf.Network.IsAllowedIP(c.RemoteAddr()) {
+		logger.Trace(
+			"connection rejected",
+			log.String("remote-addr", c.RemoteAddr().String()),
+			log.String("protocol", "https"))
+		return
+	}
+
 	logger.Trace(
 		"connection accepted",
 		log.String("remote-addr", c.RemoteAddr().String()),
 		log.String("protocol", "http"))
 
-	c.SetDeadline(time.Now().Add(p.connTimeout))
+	c.SetDeadline(time.Now().Add(p.conf.Proxy.ConnTimeout))
 
 	hostname, prefix, err := http.ParseHost(c)
 	if err != nil {
@@ -74,7 +82,7 @@ func (p *SNIProxy) handleHTTPConnection(c *net.TCPConn) {
 		log.String("hostname", hostname))
 
 	uri := net.JoinHostPort(hostname, "http")
-	dst, err := net.DialTimeout("tcp", uri, p.dialTimeout)
+	dst, err := net.DialTimeout("tcp", uri, p.conf.Proxy.DialTimeout)
 	if err != nil {
 		logger.Warn(
 			"could not forward request",
