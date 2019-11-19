@@ -1,2 +1,2 @@
 # smartdns
-Smart DNS proxy to watch Disney+ &amp; Netflix
+Smart DNS proxy to bypass Geo-restrictions on Disney+ & Netflix streaming
