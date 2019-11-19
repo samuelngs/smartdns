@@ -4,14 +4,16 @@ services:
   smartdns:
     image: ubuntu:latest
     command: smartdns
+    environment:
+      LOG: '*'
     volumes:
       - ./build/smartdns:/bin/smartdns:ro
     networks:
       vpc:
         ipv4_address: 10.5.0.2
 
-  dnsutils:
-    image: tutum/dnsutils:latest
+  debugger:
+    image: ubuntu:latest
     command:
       - sleep
       - infinity
