@@ -23,7 +23,7 @@ import (
 
 // FromEnv reads an network address from environment variable
 func FromEnv() (net.IP, bool) {
-	env, ok := os.LookupEnv("HOST_IP")
+	env, ok := os.LookupEnv("HOST")
 	if !ok {
 		return nil, false
 	}
