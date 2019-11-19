@@ -47,12 +47,7 @@ func (r *Record) String() string {
 			c.Write(c.LightGrey(field.Key))
 			c.Write(c.LightGrey(": "))
 		}
-		switch s := field.Value(); {
-		case len(s) > 20:
-			c.Write(c.LightGrey(s[:20] + ".."))
-		default:
-			c.Write(c.LightGrey(s))
-		}
+		c.Write(c.LightGrey(field.Value()))
 		c.Write(c.LightGrey("] "))
 	}
 	return c.String()
