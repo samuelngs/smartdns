@@ -38,13 +38,16 @@ func (p *SNIProxy) listenHTTPS(port int) {
 	for {
 		c, err := l.Accept()
 		if err != nil {
-			logger.Fatal(
+			logger.Warn(
 				"could not accept HTTPS connection",
-				log.String("error", err.Error()),
-				log.String("remote-addr", c.RemoteAddr().String()))
+				log.String("error", err.Error()))
+			continue
 		}
-		if c, ok := c.(*net.TCPConn); ok {
-			go p.handleHTTPSConnection(c)
+		switch o := c.(type) {
+		case *net.TCPConn:
+			go p.handleHTTPSConnection(o)
+		default:
+			c.Close()
 		}
 	}
 }
