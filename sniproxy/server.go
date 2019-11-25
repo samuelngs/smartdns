@@ -18,25 +18,37 @@ package sniproxy
 
 import (
 	"github.com/samuelngs/smartdns/config"
+	"golang.org/x/sync/errgroup"
 )
 
 // SNIProxy constructs a sni-proxy server
 type SNIProxy struct {
-	conf *config.Config
+	conf  *config.Config
+	http  *httpServer
+	https *httpsServer
 }
 
 // Start initializes and starts sni-proxy server
 func (p *SNIProxy) Start() error {
-	if p.conf.Proxy.HTTP.Enabled {
-		go p.listenHTTP(p.conf.Proxy.HTTP.Port)
-	}
-	if p.conf.Proxy.HTTPS.Enabled {
-		go p.listenHTTPS(p.conf.Proxy.HTTPS.Port)
-	}
-	return nil
+	var eg errgroup.Group
+
+	eg.Go(func() error { return p.http.listen() })
+	eg.Go(func() error { return p.https.listen() })
+
+	return eg.Wait()
 }
 
 // Stop stops the running sni-proxy server
 func (p *SNIProxy) Stop() error {
+	p.http.shutdown()
+	p.https.shutdown()
 	return nil
+}
+
+// NewSNIProxy creates a sniproxy server
+func NewSNIProxy(conf *config.Config) *SNIProxy {
+	return &SNIProxy{
+		http:  &httpServer{conf: conf},
+		https: &httpsServer{conf: conf},
+	}
 }

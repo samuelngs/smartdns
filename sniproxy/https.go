@@ -21,45 +21,66 @@ import (
 	"net"
 	"time"
 
+	"github.com/samuelngs/smartdns/config"
 	"github.com/samuelngs/smartdns/log"
 	"github.com/samuelngs/smartdns/net/https"
 )
 
-func (p *SNIProxy) listenHTTPS(port int) {
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-	if err != nil {
-		logger.Fatal(
-			"could not listen for HTTPS connections",
-			log.String("error", err.Error()))
-	}
-	defer l.Close()
+type httpsServer struct {
+	conf     *config.Config
+	listener net.Listener
+	stopped  bool
+}
 
-	logger.Debug("accepting HTTPS connections", log.Int("port", port))
+func (h *httpsServer) listen() error {
+	if h.conf.SNIProxy.HTTPS.Enabled {
+		l, err := net.Listen("tcp", fmt.Sprintf(":%d", h.conf.SNIProxy.HTTPS.Port))
+		if err != nil {
+			logger.Fatal(
+				"could not listen for HTTPS connections",
+				log.String("error", err.Error()))
+			return err
+		}
+		h.stopped = false
+		h.listener = l
+		h.acceptConnection(l)
+	}
+	return nil
+}
+
+func (h *httpsServer) shutdown() {
+	logger.Debug("stopped accepting HTTPS connections")
+	if !h.stopped {
+		h.stopped = true
+		h.listener.Close()
+	}
+}
+
+func (h *httpsServer) acceptConnection(l net.Listener) {
+	logger.Debug("accepting HTTPS connections", log.String("addr", l.Addr().String()))
 	for {
 		c, err := l.Accept()
 		if err != nil {
 			logger.Warn(
 				"could not accept HTTPS connection",
 				log.String("error", err.Error()))
-			continue
+			if !h.stopped {
+				continue
+			}
+			return
 		}
-		switch o := c.(type) {
-		case *net.TCPConn:
-			go p.handleHTTPSConnection(o)
-		default:
-			c.Close()
-		}
+		go h.handleConnection(c.(*net.TCPConn))
 	}
 }
 
-func (p *SNIProxy) handleHTTPSConnection(c *net.TCPConn) {
+func (h *httpsServer) handleConnection(c *net.TCPConn) {
 	defer c.Close()
 	defer logger.Trace(
 		"connection closed",
 		log.String("remote-addr", c.RemoteAddr().String()),
 		log.String("protocol", "https"))
 
-	if !p.conf.Network.IsAllowedIP(c.RemoteAddr()) {
+	if !h.conf.Network.IsAllowedIP(c.RemoteAddr()) {
 		logger.Trace(
 			"connection rejected",
 			log.String("remote-addr", c.RemoteAddr().String()),
@@ -72,9 +93,9 @@ func (p *SNIProxy) handleHTTPSConnection(c *net.TCPConn) {
 		log.String("remote-addr", c.RemoteAddr().String()),
 		log.String("protocol", "https"))
 
-	c.SetDeadline(time.Now().Add(p.conf.Proxy.ConnTimeout))
+	c.SetDeadline(time.Now().Add(h.conf.SNIProxy.ConnTimeout))
 
-	h, err := https.ParseHandshakeMessage(c)
+	m, err := https.ParseHandshakeMessage(c)
 	if err != nil {
 		logger.Warn(
 			"could not read sni-hostname",
@@ -82,7 +103,7 @@ func (p *SNIProxy) handleHTTPSConnection(c *net.TCPConn) {
 			log.String("error", err.Error()))
 		return
 	}
-	if len(h.Hostname) == 0 {
+	if len(m.Hostname) == 0 {
 		logger.Warn(
 			"could not read sni-hostname",
 			log.String("remote-addr", c.RemoteAddr().String()))
@@ -91,10 +112,10 @@ func (p *SNIProxy) handleHTTPSConnection(c *net.TCPConn) {
 
 	logger.Trace("proxying http connection",
 		log.String("remote-addr", c.RemoteAddr().String()),
-		log.String("hostname", h.Hostname))
+		log.String("hostname", m.Hostname))
 
-	uri := net.JoinHostPort(h.Hostname, "https")
-	dst, err := net.DialTimeout("tcp", uri, p.conf.Proxy.DialTimeout)
+	uri := net.JoinHostPort(m.Hostname, "https")
+	dst, err := net.DialTimeout("tcp", uri, h.conf.SNIProxy.DialTimeout)
 	if err != nil {
 		logger.Warn(
 			"could not forward request",
@@ -103,12 +124,12 @@ func (p *SNIProxy) handleHTTPSConnection(c *net.TCPConn) {
 		return
 	}
 
-	if err := p.proxy(c, dst.(*net.TCPConn), &h.Buffer); err != nil {
+	if err := proxy(c, dst.(*net.TCPConn), h.conf.SNIProxy.DataTimeout, &m.Buffer); err != nil {
 		logger.Warn(
 			"could not proxy http connection",
 			log.String("error", err.Error()),
 			log.String("remote-addr", c.RemoteAddr().String()),
-			log.String("hostname", h.Hostname))
+			log.String("hostname", m.Hostname))
 		return
 	}
 }

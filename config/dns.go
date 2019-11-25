@@ -17,83 +17,36 @@
 package config
 
 import (
-	"net"
-	"strings"
+	"fmt"
+	"os"
 )
 
-// DNSResolveList represents a list of dns resolver list
-type DNSResolveList []*DNS
-
-// DNS query rule
+// DNS configuration
 type DNS struct {
-	Name       string `yaml:"name"`
-	Nameserver string `yaml:"nameserver,omitempty"`
-	IP         string `yaml:"ip,omitempty"`
-	TTL        int    `yaml:"ttl"`
+	TLS            *DNSTLS       `yaml:"tls"`
+	DNSResolveList []*DNSResolve `yaml:"resolve_dns"`
 }
 
-// IsValid returns true if the custom dns configuration is valid
-func (d *DNS) IsValid() bool {
-	switch {
-	case len(d.Nameserver) > 0 && len(d.IP) > 0:
-		return false
-	case len(d.Nameserver) > 0:
-		return net.ParseIP(d.Nameserver) != nil
-	case len(d.IP) > 0:
-		return net.ParseIP(d.IP) != nil
-	}
-	return false
+// DNSTLS configuration
+type DNSTLS struct {
+	Enabled  bool   `yaml:"enabled"`
+	Email    string `yaml:"email"`
+	Hostname string `yaml:"hostname"`
 }
 
-// NameserverAddr returns the address of nameserver
-func (d *DNS) NameserverAddr() string {
-	if _, _, err := net.SplitHostPort(d.Nameserver); err != nil {
-		return net.JoinHostPort(d.Nameserver, "53")
+// DefaultDNS generates default settings for DNS
+func DefaultDNS() *DNS {
+	return &DNS{
+		TLS:            DefaultDNSTLS(),
+		DNSResolveList: make([]*DNSResolve, 0),
 	}
-	return d.Nameserver
 }
 
-// ResolveToIP points a domain name to an ip address
-func ResolveToIP(name, ip string, ttl int) *DNS {
-	d := &DNS{Name: name, IP: ip, TTL: ttl}
-	if d.IsValid() {
-		return d
+// DefaultDNSTLS generates default settings for dns-tls
+func DefaultDNSTLS() *DNSTLS {
+	return &DNSTLS{
+		Enabled:  true,
+		Email:    fmt.Sprintf("admin@%s", os.Getenv("hostname")),
+		Hostname: os.Getenv("hostname"),
 	}
-	return nil
-}
-
-// ResolveWithNameserver sets the dns of domain name to be resolved
-// through an external dns server
-func ResolveWithNameserver(name, ns string, ttl int) *DNS {
-	d := &DNS{Name: name, Nameserver: ns, TTL: ttl}
-	if d.IsValid() {
-		return d
-	}
-	return nil
-}
-
-// MatchDNS returns the dns rule that matches the hostname
-func (d DNSResolveList) MatchDNS(name string) *DNS {
-	var matches []*DNS
-	for _, rule := range d {
-		if rule != nil {
-			o := rule.Name
-			if len(o) > 0 && o[len(o)-1] != 0x2e {
-				o += string(0x2e)
-			}
-			if strings.HasSuffix(name, o) {
-				matches = append(matches, rule)
-			}
-		}
-	}
-	if len(matches) > 0 {
-		match := matches[0]
-		for _, rule := range matches {
-			if len(rule.Name) > len(match.Name) {
-				match = rule
-			}
-		}
-		return match
-	}
-	return nil
 }

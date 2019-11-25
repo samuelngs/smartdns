@@ -25,17 +25,19 @@ import (
 
 // Config encapsulates all configuration details for smartdns
 type Config struct {
-	Path    string   `yaml:"path"`
-	Network *Network `yaml:"network"`
-	Proxy   *Proxy   `yaml:"proxy"`
+	Path     string    `yaml:"path"`
+	Network  *Network  `yaml:"network"`
+	DNS      *DNS      `yaml:"dns"`
+	SNIProxy *SNIProxy `yaml:"proxy"`
 }
 
 // DefaultConfig generates the default settings for smartdns
 func DefaultConfig() *Config {
 	return &Config{
-		Path:    os.ExpandEnv("/etc/smartdns/smartdns.yaml"),
-		Network: DefaultNetwork(),
-		Proxy:   DefaultProxy(),
+		Path:     os.ExpandEnv("/etc/smartdns/smartdns.yaml"),
+		Network:  DefaultNetwork(),
+		DNS:      DefaultDNS(),
+		SNIProxy: DefaultSNIProxy(),
 	}
 }
 

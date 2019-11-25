@@ -39,7 +39,7 @@ type writer struct {
 	RemoteAddr   func() net.Addr
 }
 
-func (p *SNIProxy) newReader(c *net.TCPConn, prefix ...io.Reader) reader {
+func newReader(c *net.TCPConn, timeout time.Duration, prefix ...io.Reader) reader {
 	var rd io.Reader
 	if len(prefix) > 0 && prefix[0] != nil {
 		rd = io.MultiReader(prefix[0], c)
@@ -48,29 +48,29 @@ func (p *SNIProxy) newReader(c *net.TCPConn, prefix ...io.Reader) reader {
 	}
 	return reader{
 		Reader:       rd,
-		ResetTimeout: func() { c.SetReadDeadline(time.Now().Add(p.conf.Proxy.DataTimeout)) },
+		ResetTimeout: func() { c.SetReadDeadline(time.Now().Add(timeout)) },
 		Close:        c.CloseRead,
 		RemoteAddr:   c.RemoteAddr,
 	}
 }
 
-func (p *SNIProxy) newWriter(c *net.TCPConn) writer {
+func newWriter(c *net.TCPConn, timeout time.Duration) writer {
 	return writer{
 		Writer:       c,
-		ResetTimeout: func() { c.SetWriteDeadline(time.Now().Add(p.conf.Proxy.DataTimeout)) },
+		ResetTimeout: func() { c.SetWriteDeadline(time.Now().Add(timeout)) },
 		Close:        c.CloseWrite,
 		RemoteAddr:   c.RemoteAddr,
 	}
 }
 
-func (p *SNIProxy) proxy(src, dst *net.TCPConn, prefix io.Reader) error {
+func proxy(src, dst *net.TCPConn, timeout time.Duration, prefix io.Reader) error {
 	var eg errgroup.Group
-	eg.Go(func() error { return p.forward(p.newWriter(dst), p.newReader(src, prefix)) })
-	eg.Go(func() error { return p.forward(p.newWriter(src), p.newReader(dst)) })
+	eg.Go(func() error { return forward(newWriter(dst, timeout), newReader(src, timeout, prefix)) })
+	eg.Go(func() error { return forward(newWriter(src, timeout), newReader(dst, timeout)) })
 	return eg.Wait()
 }
 
-func (p *SNIProxy) forward(dst writer, src reader) error {
+func forward(dst writer, src reader) error {
 	defer src.Close()
 	defer dst.Close()
 

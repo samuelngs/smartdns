@@ -16,15 +16,6 @@
 
 package sniproxy
 
-import (
-	"github.com/samuelngs/smartdns/config"
-	"github.com/samuelngs/smartdns/log"
-)
+import "github.com/samuelngs/smartdns/log"
 
 var logger = log.DefaultLogger
-
-// Listen func
-func Listen(conf *config.Config) {
-	e := &SNIProxy{conf}
-	e.Start()
-}

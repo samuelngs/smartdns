@@ -14,9 +14,10 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the smartdns library. If not, see <http://www.gnu.org/licenses/>.
 
-package dnsserver
+package dnsproxy
 
 import (
+	"crypto/tls"
 	"fmt"
 
 	"github.com/miekg/dns"
@@ -24,9 +25,8 @@ import (
 	"github.com/samuelngs/smartdns/log"
 )
 
-var logger = log.DefaultLogger
-
 type dnsServer struct {
+	*dns.Server
 	conf *config.Config
 }
 
@@ -36,31 +36,16 @@ func (d *dnsServer) parseQuery(r *dns.Msg) (dns.Question, bool) {
 			if q.Qtype == dns.TypeA {
 				return q, true
 			}
+			if q.Qtype == dns.TypeTXT {
+				return q, true
+			}
 		}
 	}
 	return dns.Question{}, false
 }
 
-func (d *dnsServer) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
-	m := new(dns.Msg)
-	m.Compress = false
-	m.SetReply(r)
-	defer w.WriteMsg(m)
-	defer logger.Trace("dns query completed")
-
-	if !d.conf.Network.IsAllowedIP(w.RemoteAddr()) {
-		return
-	}
-	question, ok := d.parseQuery(r)
-	if !ok {
-		return
-	}
-
-	logger.Trace(
-		"dns query accepted",
-		log.String("name", question.Name))
-
-	list := config.DNSResolveList(d.conf.Proxy.DNS)
+func (d *dnsServer) resolveA(m *dns.Msg, question dns.Question) {
+	list := config.DNSResolveList(d.conf.DNS.DNSResolveList)
 	resolv := list.MatchDNS(question.Name)
 
 	var ttl = 60
@@ -98,21 +83,46 @@ func (d *dnsServer) handleDNSRequest(w dns.ResponseWriter, r *dns.Msg) {
 		logger.Trace(
 			"resolving domain name to proxy ip",
 			log.String("name", question.Name),
-			log.String("ip", d.conf.Proxy.Host))
+			log.String("ip", d.conf.SNIProxy.Host))
 
-		r, _ := dns.NewRR(fmt.Sprintf("%s %d IN A %s", question.Name, ttl, d.conf.Proxy.Host))
+		r, _ := dns.NewRR(fmt.Sprintf("%s %d IN A %s", question.Name, ttl, d.conf.SNIProxy.Host))
 		m.Answer = []dns.RR{r}
 	}
 }
 
-// Listen starts dns server
-func Listen(conf *config.Config) {
-	d := &dnsServer{conf}
-	dns.HandleFunc(".", d.handleDNSRequest)
-	server := &dns.Server{Addr: ":53", Net: "udp"}
+func (d *dnsServer) resolveTXT(m *dns.Msg, question dns.Question) {
+	r, _ := dns.NewRR(fmt.Sprintf(`%s %d IN TXT "%s"`, question.Name, 60, "LOL=man"))
+	m.Answer = []dns.RR{r}
+}
 
-	logger.Debug("accepting DNS queries")
-	if err := server.ListenAndServe(); err != nil {
-		logger.Fatal(err.Error())
+func (d *dnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
+	m := new(dns.Msg)
+	m.Compress = false
+	m.SetReply(r)
+	defer w.WriteMsg(m)
+	defer logger.Trace("dns query completed")
+
+	if !d.conf.Network.IsAllowedIP(w.RemoteAddr()) {
+		return
 	}
+	question, ok := d.parseQuery(r)
+	if !ok {
+		return
+	}
+
+	logger.Trace(
+		"dns query accepted",
+		log.String("name", question.Name))
+
+	switch question.Qtype {
+	case dns.TypeA:
+		d.resolveA(m, question)
+	case dns.TypeTXT:
+		d.resolveTXT(m, question)
+	}
+}
+
+func (d *dnsServer) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	logger.Debug("get certificate")
+	return nil, nil
 }

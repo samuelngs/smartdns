@@ -22,27 +22,25 @@ import (
 	"github.com/samuelngs/smartdns/net/ip"
 )
 
-// Proxy configuration
-type Proxy struct {
+// SNIProxy configuration
+type SNIProxy struct {
 	Host        string        `yaml:"host"`
 	ConnTimeout time.Duration `yaml:"conn_timeout"`
 	DialTimeout time.Duration `yaml:"dial_timeout"`
 	DataTimeout time.Duration `yaml:"data_timeout"`
 	HTTP        *HTTPProxy    `yaml:"http"`
 	HTTPS       *HTTPSProxy   `yaml:"https"`
-	DNS         []*DNS        `yaml:"resolve_dns"`
 }
 
-// DefaultProxy configuration
-func DefaultProxy() *Proxy {
-	p := &Proxy{
+// DefaultSNIProxy configuration
+func DefaultSNIProxy() *SNIProxy {
+	p := &SNIProxy{
 		Host:        "127.0.0.1",
 		ConnTimeout: time.Second * 20,
 		DialTimeout: time.Second * 10,
 		DataTimeout: time.Second * 240,
 		HTTP:        DefaultHTTPProxy(),
 		HTTPS:       DefaultHTTPSProxy(),
-		DNS:         make([]*DNS, 0),
 	}
 	if host, ok := ip.FromEnv(); ok {
 		p.Host = host.String()

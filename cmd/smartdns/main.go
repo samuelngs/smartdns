@@ -18,12 +18,25 @@ package main
 
 import (
 	"github.com/samuelngs/smartdns/config"
-	"github.com/samuelngs/smartdns/dnsserver"
+	"github.com/samuelngs/smartdns/dnsproxy"
+	"github.com/samuelngs/smartdns/log"
 	"github.com/samuelngs/smartdns/sniproxy"
+	"golang.org/x/sync/errgroup"
 )
 
+var logger = log.DefaultLogger
+
 func main() {
+	var eg errgroup.Group
+
 	conf := config.DefaultConfig()
-	sniproxy.Listen(conf)
-	dnsserver.Listen(conf)
+	sniproxy := sniproxy.NewSNIProxy(conf)
+	dnsproxy := dnsproxy.NewDNSProxy(conf)
+
+	eg.Go(func() error { return sniproxy.Start() })
+	eg.Go(func() error { return dnsproxy.Start() })
+
+	if err := eg.Wait(); err != nil {
+		logger.Fatal(err.Error())
+	}
 }
