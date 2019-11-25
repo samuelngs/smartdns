@@ -19,11 +19,11 @@ package dnsproxy
 import (
 	"context"
 	"crypto/tls"
+	"sync"
 
 	"github.com/miekg/dns"
 	"github.com/samuelngs/smartdns/config"
 	"github.com/samuelngs/smartdns/log"
-	"golang.org/x/crypto/acme"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -32,7 +32,7 @@ var logger = log.DefaultLogger
 // DNSProxy constructs a dns-proxy server
 type DNSProxy struct {
 	conf   *config.Config
-	acme   *acme.Client
+	acme   *acmeclient
 	dns    *dnsServer
 	dnstls *dnsServer
 	ctx    context.Context
@@ -44,7 +44,7 @@ func (d *DNSProxy) Start() error {
 	logger.Debug("started accepting DNS queries")
 
 	eg.Go(func() error { return d.dns.ListenAndServe() })
-	eg.Go(func() error { return d.dnstls.ListenAndServe() })
+	eg.Go(d.startDOTServer)
 
 	return eg.Wait()
 }
@@ -60,23 +60,58 @@ func (d *DNSProxy) Stop() error {
 	return eg.Wait()
 }
 
+func (d *DNSProxy) startDOTServer() error {
+	logger.Debug("initialize dns-01 challenge")
+	s, err := d.acme.initDNS01Challenge(d.ctx)
+	if err != nil {
+		return err
+	}
+
+	logger.Debug(
+		"set up dns-01 challenge verification",
+		log.String("label", s.label),
+		log.String("value", s.value))
+	d.dns.txt.Store(s.label, s.value)
+	defer d.dns.txt.Delete(s.label)
+
+	logger.Debug("start dns-01 verification")
+	if err := d.acme.startDNS01Challenge(d.ctx, s); err != nil {
+		return err
+	}
+
+	logger.Debug("create acme certificate")
+	o, err := d.acme.createAcmeCert(d.ctx, s)
+	if err != nil {
+		return err
+	}
+	if o == nil {
+		return nil
+	}
+
+	d.dnstls.Shutdown()
+	d.dnstls.Server.TLSConfig = &tls.Config{}
+	return d.dnstls.ListenAndServe()
+}
+
 // NewDNSProxy creates a dns-proxy server
 func NewDNSProxy(conf *config.Config) *DNSProxy {
+	m := new(sync.Map)
 	c := context.Background()
 
-	r := &dnsServer{conf: conf}
+	a := letsencrypt(c)
+	a.withConfig(conf)
+
+	r := &dnsServer{conf: conf, txt: m}
 	r.Server = &dns.Server{Addr: ":53", Net: "udp", Handler: r}
 
-	t := &dnsServer{conf: conf}
+	t := &dnsServer{conf: conf, txt: m}
 	t.Server = &dns.Server{Addr: ":853", Net: "tcp", Handler: t}
-	t.TLSConfig = &tls.Config{GetCertificate: t.GetCertificate}
 
-	d := &DNSProxy{
+	return &DNSProxy{
 		conf:   conf,
-		acme:   letsencrypt(c),
+		acme:   a,
 		dns:    r,
 		dnstls: t,
 		ctx:    c,
 	}
-	return d
 }

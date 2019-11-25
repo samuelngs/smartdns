@@ -42,7 +42,7 @@ type acmeclient struct {
 	conf *config.Config
 }
 
-func letsencrypt(ctx context.Context) *acme.Client {
+func letsencrypt(ctx context.Context) *acmeclient {
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		logger.Fatal(err.Error())
@@ -57,7 +57,11 @@ func letsencrypt(ctx context.Context) *acme.Client {
 	if err != nil {
 		logger.Fatal(err.Error())
 	}
-	return c
+	return &acmeclient{Client: c}
+}
+
+func (d *acmeclient) withConfig(conf *config.Config) {
+	d.conf = conf
 }
 
 func (d *acmeclient) initDNS01Challenge(ctx context.Context) (*session, error) {

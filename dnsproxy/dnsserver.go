@@ -17,8 +17,8 @@
 package dnsproxy
 
 import (
-	"crypto/tls"
 	"fmt"
+	"sync"
 
 	"github.com/miekg/dns"
 	"github.com/samuelngs/smartdns/config"
@@ -27,6 +27,7 @@ import (
 
 type dnsServer struct {
 	*dns.Server
+	txt  *sync.Map
 	conf *config.Config
 }
 
@@ -91,8 +92,10 @@ func (d *dnsServer) resolveA(m *dns.Msg, question dns.Question) {
 }
 
 func (d *dnsServer) resolveTXT(m *dns.Msg, question dns.Question) {
-	r, _ := dns.NewRR(fmt.Sprintf(`%s %d IN TXT "%s"`, question.Name, 60, "LOL=man"))
-	m.Answer = []dns.RR{r}
+	if o, ok := d.txt.Load(question.Name); ok {
+		r, _ := dns.NewRR(fmt.Sprintf(`%s %d IN TXT "%s"`, question.Name, 60, o.(string)))
+		m.Answer = []dns.RR{r}
+	}
 }
 
 func (d *dnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
@@ -120,9 +123,4 @@ func (d *dnsServer) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	case dns.TypeTXT:
 		d.resolveTXT(m, question)
 	}
-}
-
-func (d *dnsServer) GetCertificate(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
-	logger.Debug("get certificate")
-	return nil, nil
 }
