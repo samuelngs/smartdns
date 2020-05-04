@@ -18,53 +18,54 @@ package sniproxy
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"time"
 
 	"github.com/samuelngs/smartdns/config"
 	"github.com/samuelngs/smartdns/log"
 	"github.com/samuelngs/smartdns/net/http"
+	"github.com/samuelngs/smartdns/net/https"
 )
 
 type httpServer struct {
 	conf     *config.Config
+	port     int
 	listener net.Listener
-	stopped  bool
+	started  bool
 }
 
 func (h *httpServer) listen() error {
-	if h.conf.SNIProxy.HTTP.Enabled {
-		l, err := net.Listen("tcp", fmt.Sprintf(":%d", h.conf.SNIProxy.HTTP.Port))
-		if err != nil {
-			logger.Warn(
-				"could not listen for HTTP connections",
-				log.String("error", err.Error()))
-			return err
-		}
-		h.stopped = false
-		h.listener = l
-		h.acceptConnection(l)
+	l, err := net.Listen("tcp", fmt.Sprintf(":%d", h.port))
+	if err != nil {
+		logger.Warn(
+			"could not listen for HTTP and HTTPS connections",
+			log.String("error", err.Error()))
+		return err
 	}
+	h.started = false
+	h.listener = l
+	h.acceptConnection(l)
 	return nil
 }
 
 func (h *httpServer) shutdown() {
-	if !h.stopped {
-		logger.Debug("stopped accepting HTTP connections")
-		h.stopped = true
+	if h.started {
+		logger.Debug("stopped accepting HTTP and HTTPS connections")
+		h.started = true
 		h.listener.Close()
 	}
 }
 
 func (h *httpServer) acceptConnection(l net.Listener) {
-	logger.Debug("accepting HTTP connections", log.String("addr", l.Addr().String()))
+	logger.Debug("accepting HTTP and HTTPS connections", log.String("addr", l.Addr().String()))
 	for {
 		c, err := l.Accept()
 		if err != nil {
 			logger.Warn(
-				"could not accept HTTP connection",
+				"could not accept HTTP or HTTPS connection",
 				log.String("error", err.Error()))
-			if !h.stopped {
+			if h.started {
 				continue
 			}
 			return
@@ -77,39 +78,52 @@ func (h *httpServer) handleConnection(c *net.TCPConn) {
 	defer c.Close()
 	defer logger.Trace(
 		"connection closed",
-		log.String("remote-addr", c.RemoteAddr().String()),
-		log.String("protocol", "http"))
+		log.String("remote-addr", c.RemoteAddr().String()))
 
 	if !h.conf.Network.IsAllowedIP(c.RemoteAddr()) {
 		logger.Trace(
 			"connection rejected",
-			log.String("remote-addr", c.RemoteAddr().String()),
-			log.String("protocol", "https"))
+			log.String("remote-addr", c.RemoteAddr().String()))
 		return
 	}
 
 	logger.Trace(
 		"connection accepted",
-		log.String("remote-addr", c.RemoteAddr().String()),
-		log.String("protocol", "http"))
+		log.String("remote-addr", c.RemoteAddr().String()))
 
 	c.SetDeadline(time.Now().Add(h.conf.SNIProxy.ConnTimeout))
 
-	hostname, prefix, err := http.ParseHost(c)
+	logger.Trace(
+		"checking connection protocol",
+		log.String("remote-addr", c.RemoteAddr().String()))
+
+	f := make([]byte, 1)
+	c.Read(f)
+
+	if f[0] == 22 {
+		h.handleHTTPSConnection(c)
+		return
+	}
+
+	hostname, prefix, err := http.ParseHost(c, f)
 	if err != nil {
 		logger.Warn(err.Error(), log.String("remote-addr", c.RemoteAddr().String()))
 		return
 	}
 
+	h.handleHTTPConnection(c, hostname, prefix)
+}
+
+func (h *httpServer) handleHTTPConnection(c *net.TCPConn, hostname string, prefix io.Reader) {
 	logger.Trace("proxying http connection",
 		log.String("remote-addr", c.RemoteAddr().String()),
 		log.String("hostname", hostname))
 
-	uri := net.JoinHostPort(hostname, "http")
+	uri := net.JoinHostPort(hostname, fmt.Sprintf("%d", h.port))
 	dst, err := net.DialTimeout("tcp", uri, h.conf.SNIProxy.DialTimeout)
 	if err != nil {
 		logger.Warn(
-			"could not forward request",
+			"could not forward http request",
 			log.String("error", err.Error()),
 			log.String("remote-addr", c.RemoteAddr().String()))
 		return
@@ -121,6 +135,49 @@ func (h *httpServer) handleConnection(c *net.TCPConn) {
 			log.String("error", err.Error()),
 			log.String("remote-addr", c.RemoteAddr().String()),
 			log.String("hostname", hostname))
+		return
+	}
+}
+
+func (h *httpServer) handleHTTPSConnection(c *net.TCPConn) {
+	logger.Trace("reading sni-hostname",
+		log.String("remote-addr", c.RemoteAddr().String()))
+
+	m, err := https.ParseHandshakeMessage(c)
+	if err != nil {
+		logger.Warn(
+			"could not read sni-hostname",
+			log.String("remote-addr", c.RemoteAddr().String()),
+			log.String("error", err.Error()))
+		return
+	}
+	if len(m.Hostname) == 0 {
+		logger.Warn(
+			"could not read sni-hostname",
+			log.String("remote-addr", c.RemoteAddr().String()))
+		return
+	}
+
+	logger.Trace("proxying https connection",
+		log.String("remote-addr", c.RemoteAddr().String()),
+		log.String("hostname", m.Hostname))
+
+	uri := net.JoinHostPort(m.Hostname, fmt.Sprintf("%d", h.port))
+	dst, err := net.DialTimeout("tcp", uri, h.conf.SNIProxy.DialTimeout)
+	if err != nil {
+		logger.Warn(
+			"could not forward https request",
+			log.String("error", err.Error()),
+			log.String("remote-addr", c.RemoteAddr().String()))
+		return
+	}
+
+	if err := proxy(c, dst.(*net.TCPConn), h.conf.SNIProxy.DataTimeout, &m.Buffer); err != nil {
+		logger.Warn(
+			"could not proxy https connection",
+			log.String("error", err.Error()),
+			log.String("remote-addr", c.RemoteAddr().String()),
+			log.String("hostname", m.Hostname))
 		return
 	}
 }

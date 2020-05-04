@@ -55,6 +55,15 @@ func (d *dnsServer) resolveA(m *dns.Msg, question dns.Question) {
 	}
 
 	switch {
+	case resolv != nil && resolv.Nameserver == "-":
+		logger.Trace(
+			"resolving domain name to proxy ip",
+			log.String("name", question.Name),
+			log.String("ip", d.conf.SNIProxy.Host))
+
+		r, _ := dns.NewRR(fmt.Sprintf("%s %d IN A %s", question.Name, ttl, d.conf.SNIProxy.Host))
+		m.Answer = []dns.RR{r}
+
 	case resolv != nil && len(resolv.Nameserver) > 0:
 		logger.Trace(
 			"resolving domain name with nameserver",
@@ -82,12 +91,18 @@ func (d *dnsServer) resolveA(m *dns.Msg, question dns.Question) {
 
 	default:
 		logger.Trace(
-			"resolving domain name to proxy ip",
-			log.String("name", question.Name),
-			log.String("ip", d.conf.SNIProxy.Host))
+			"resolving domain name with google nameserver",
+			log.String("name", question.Name))
 
-		r, _ := dns.NewRR(fmt.Sprintf("%s %d IN A %s", question.Name, ttl, d.conf.SNIProxy.Host))
-		m.Answer = []dns.RR{r}
+		t := new(dns.Msg)
+		t.SetQuestion(question.Name, dns.TypeA)
+		c := new(dns.Client)
+		if in, _, _ := c.Exchange(t, "8.8.8.8:53"); len(in.Answer) > 0 {
+			for _, a := range in.Answer {
+				r, _ := dns.NewRR(a.String())
+				m.Answer = append(m.Answer, r)
+			}
+		}
 	}
 }
 

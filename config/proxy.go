@@ -17,6 +17,9 @@
 package config
 
 import (
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/samuelngs/smartdns/net/ip"
@@ -25,22 +28,63 @@ import (
 // SNIProxy configuration
 type SNIProxy struct {
 	Host        string        `yaml:"host"`
+	Ports       []string      `yaml:"ports"`
 	ConnTimeout time.Duration `yaml:"conn_timeout"`
 	DialTimeout time.Duration `yaml:"dial_timeout"`
 	DataTimeout time.Duration `yaml:"data_timeout"`
-	HTTP        *HTTPProxy    `yaml:"http"`
-	HTTPS       *HTTPSProxy   `yaml:"https"`
+}
+
+// AllowedPorts returns all the open ports for server
+func (s *SNIProxy) AllowedPorts() []int {
+	portsmap := map[int]struct{}{}
+	for _, rule := range s.Ports {
+		switch ranges := strings.Split(rule, "-"); {
+		case len(ranges) == 2:
+			start, err := strconv.Atoi(ranges[0])
+			if err != nil {
+				continue
+			}
+
+			end, err := strconv.Atoi(ranges[1])
+			if err != nil {
+				continue
+			}
+
+			if start < 0 || end < 0 || end < start {
+				continue
+			}
+
+			for i := start; i <= end; i++ {
+				portsmap[i] = struct{}{}
+			}
+		case len(ranges) == 1:
+			port, err := strconv.Atoi(ranges[0])
+			if err != nil {
+				continue
+			}
+			portsmap[port] = struct{}{}
+		}
+	}
+	ports := make([]int, 0)
+	for port := range portsmap {
+		switch port {
+		case 22, 53:
+		default:
+			ports = append(ports, port)
+		}
+	}
+	sort.Sort(sort.IntSlice(ports))
+	return ports
 }
 
 // DefaultSNIProxy configuration
 func DefaultSNIProxy() *SNIProxy {
 	p := &SNIProxy{
 		Host:        "127.0.0.1",
+		Ports:       []string{"0-10000"},
 		ConnTimeout: time.Second * 20,
 		DialTimeout: time.Second * 10,
 		DataTimeout: time.Second * 240,
-		HTTP:        DefaultHTTPProxy(),
-		HTTPS:       DefaultHTTPSProxy(),
 	}
 	if host, ok := ip.FromEnv(); ok {
 		p.Host = host.String()
