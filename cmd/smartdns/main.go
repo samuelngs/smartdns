@@ -30,6 +30,8 @@ func main() {
 	var eg errgroup.Group
 
 	conf := config.DefaultConfig()
+	conf.DNS.TLS.Enabled = false
+
 	sniproxy := sniproxy.NewSNIProxy(conf)
 	dnsproxy := dnsproxy.NewDNSProxy(conf)
 

@@ -23,32 +23,33 @@ import (
 
 // SNIProxy constructs a sni-proxy server
 type SNIProxy struct {
-	conf  *config.Config
-	http  *httpServer
-	https *httpsServer
+	conf    *config.Config
+	servers []*httpServer
 }
 
 // Start initializes and starts sni-proxy server
 func (p *SNIProxy) Start() error {
 	var eg errgroup.Group
-
-	eg.Go(func() error { return p.http.listen() })
-	eg.Go(func() error { return p.https.listen() })
-
+	for _, server := range p.servers {
+		eg.Go(server.listen)
+	}
 	return eg.Wait()
 }
 
 // Stop stops the running sni-proxy server
 func (p *SNIProxy) Stop() error {
-	p.http.shutdown()
-	p.https.shutdown()
+	for _, server := range p.servers {
+		server.shutdown()
+	}
 	return nil
 }
 
 // NewSNIProxy creates a sniproxy server
 func NewSNIProxy(conf *config.Config) *SNIProxy {
-	return &SNIProxy{
-		http:  &httpServer{conf: conf},
-		https: &httpsServer{conf: conf},
+	ports := conf.SNIProxy.AllowedPorts()
+	servers := make([]*httpServer, len(ports))
+	for i, port := range ports {
+		servers[i] = &httpServer{conf: conf, port: port}
 	}
+	return &SNIProxy{conf, servers}
 }

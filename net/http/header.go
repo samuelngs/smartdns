@@ -27,11 +27,11 @@ import (
 var hostHeaderPrefix = []byte("Host:")
 
 // ParseHost extracts host from a http request header
-func ParseHost(c *net.TCPConn) (string, io.Reader, error) {
-	var buf bytes.Buffer
+func ParseHost(c *net.TCPConn, b []byte) (string, io.Reader, error) {
+	var buf = bytes.NewBuffer(b)
 	var hostname string
 
-	sc := bufio.NewScanner(io.TeeReader(c, &buf))
+	sc := bufio.NewScanner(io.TeeReader(c, buf))
 	sc.Scan()
 lr:
 	for sc.Scan() {
@@ -50,5 +50,5 @@ lr:
 		return "", nil, errors.New("could not read host header")
 	}
 
-	return hostname, &buf, nil
+	return hostname, buf, nil
 }

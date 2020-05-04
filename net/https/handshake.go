@@ -17,7 +17,6 @@
 package https
 
 import (
-	"bufio"
 	"bytes"
 	"io"
 	"net"
@@ -32,9 +31,12 @@ type Handshake struct {
 // ParseHandshakeMessage for parsing handshake metadata on a https request
 func ParseHandshakeMessage(c *net.TCPConn) (*Handshake, error) {
 	var buf bytes.Buffer
-	rd := &handshakeReader{r: bufio.NewReader(io.TeeReader(c, &buf))}
+	buf.WriteByte(22)
 
-	hostname, err := rd.ReadSNIHostname()
+	r := io.MultiReader(bytes.NewReader([]byte{22}), io.TeeReader(c, &buf))
+	hr := &handshakeReader{r: r}
+
+	hostname, err := hr.ReadSNIHostname()
 	if err != nil {
 		return nil, err
 	}

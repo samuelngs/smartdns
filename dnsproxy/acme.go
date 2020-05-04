@@ -126,10 +126,10 @@ func (d *acmeclient) createAcmeCert(ctx context.Context, ss *session) ([][]byte,
 		return nil, fmt.Errorf("could not initialize certificate request: %s", err)
 	}
 
-	crt, _, err := d.CreateCert(ctx, csr, 90*24*time.Hour, true)
+	der, _, err := d.CreateCert(ctx, csr, 90*24*time.Hour, true)
 	if err != nil {
 		return nil, fmt.Errorf("could not create acme certificate: %s", err)
 	}
 
-	return crt, nil
+	return der, nil
 }

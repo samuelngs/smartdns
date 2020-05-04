@@ -37,6 +37,8 @@ func (d *DNSResolve) IsValid() bool {
 	switch {
 	case len(d.Nameserver) > 0 && len(d.IP) > 0:
 		return false
+	case len(d.Nameserver) == 1 && d.Nameserver == "-":
+		return true
 	case len(d.Nameserver) > 0:
 		return net.ParseIP(d.Nameserver) != nil
 	case len(d.IP) > 0:
@@ -51,6 +53,15 @@ func (d *DNSResolve) NameserverAddr() string {
 		return net.JoinHostPort(d.Nameserver, "53")
 	}
 	return d.Nameserver
+}
+
+// ResolveWithProxy resolves target with proxy server
+func ResolveWithProxy(name string, ttl int) *DNSResolve {
+	d := &DNSResolve{Name: name, Nameserver: "-", TTL: ttl}
+	if d.IsValid() {
+		return d
+	}
+	return nil
 }
 
 // ResolveToIP points a domain name to an ip address
